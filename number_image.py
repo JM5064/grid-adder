@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import math
 from utils import display_image, mask_blue
+from torchvision.transforms import v2
 import time
 
 
@@ -64,6 +65,18 @@ class NumberImage:
         mnist_image = cv2.copyMakeBorder(resized_image, pad_top, pad_bottom, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT)
 
         return mnist_image
+    
+
+    def transform_input(self, mnist_image):
+        transform = v2.Compose([
+            v2.Resize((28, 28)),
+            v2.ToTensor(),
+            v2.Normalize(mean=[0.1307], std=[0.3081]),
+        ])
+
+        input_image = transform(mnist_image).unsqueeze(0)
+
+        return input_image
     
 
     

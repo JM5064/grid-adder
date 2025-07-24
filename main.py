@@ -7,7 +7,7 @@ from number_image import NumberImage
 
 from model.model import Model
 import torch
-from torchvision.transforms import v2
+
 
 
 def get_image(file_path):
@@ -60,6 +60,10 @@ def extract_bboxes(blobified_image):
         if width > 5 and height > 5:
             bboxes.append((x, y, width, height))
 
+    # Remove bbox most near the bottom of the image 
+    bottommost_idx = max(range(len(bboxes)), key=lambda i: bboxes[i][1])
+    sum_bbox = bboxes.pop(bottommost_idx)
+
     return bboxes
 
 
@@ -70,7 +74,6 @@ def draw_bboxes(image, bboxes):
         cv2.rectangle(image_copy, (x, y), (x + width, y + height), (0, 0, 255), 2)
 
     return image_copy
-
 
 
 def create_number_images(image, bboxes) -> list[NumberImage]:
@@ -85,19 +88,6 @@ def create_number_images(image, bboxes) -> list[NumberImage]:
         number_images.append(number_image)
 
     return number_images
-
-
-def preprocess_input(mnist_image):
-    transform = v2.Compose([
-        v2.Resize((28, 28)),
-        v2.ToTensor(),
-        v2.Normalize(mean=[0.1307], std=[0.3081]),
-    ])
-
-    input_image = transform(mnist_image).unsqueeze(0)
-
-    return input_image
-
 
 
 def main():
@@ -121,17 +111,24 @@ def main():
     display_image(bbox_image)
 
     number_images = create_number_images(image, bboxes)
+    total = 0
     for number_image in number_images:
         bbox_image = number_image.get_bounding_box(number_image.image)
         mnist_image = number_image.mnistify(bbox_image)
 
-        input_image = preprocess_input(mnist_image)
+        input_image = number_image.transform_input(mnist_image)
         
         with torch.no_grad():
             output = model(input_image)
 
-        print(output.argmax(1).item())
+        prediction = output.argmax(1).item()
+
+        total += prediction
+
+        print(prediction)
         display_image(mnist_image)
+
+    print("TOTAL:", total)
 
 
 if __name__ == "__main__":
