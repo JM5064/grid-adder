@@ -5,6 +5,10 @@ import numpy as np
 from utils import display_image, mask_blue
 from number_image import NumberImage
 
+from model.model import Model
+import torch
+from torchvision.transforms import v2
+
 
 def get_image(file_path):
     image = cv2.imread(file_path)
@@ -18,7 +22,7 @@ def get_image(file_path):
 def preprocess_image(image):
     # image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     height, width, _ = image.shape
-    image = cv2.resize(image, (round(width / 4), round(height / 4)))
+    image = cv2.resize(image, (round(width / 2), round(height / 2)))
 
     # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
@@ -29,12 +33,12 @@ def preprocess_image(image):
 
 def blobify(masked_image):
     # Remove noise
-    kernel = np.ones((2, 2))
+    kernel = np.ones((3, 3))
     masked_image = cv2.erode(masked_image, kernel)
 
     # Blobify
-    kernel = np.ones((9, 9))
-    masked_image = cv2.dilate(masked_image, kernel, iterations=2)
+    kernel = np.ones((11, 11))
+    masked_image = cv2.dilate(masked_image, kernel, iterations=3)
 
     return masked_image
 
@@ -83,9 +87,25 @@ def create_number_images(image, bboxes) -> list[NumberImage]:
     return number_images
 
 
+def preprocess_input(mnist_image):
+    transform = v2.Compose([
+        v2.Resize((28, 28)),
+        v2.ToTensor(),
+        v2.Normalize(mean=[0.1307], std=[0.3081]),
+    ])
+
+    input_image = transform(mnist_image).unsqueeze(0)
+
+    return input_image
+
 
 
 def main():
+    model = Model()
+    state = torch.load("model/runs/10epochs/best.pt")
+    model.load_state_dict(state["state_dict"])
+    model.eval()
+
     image = get_image("example.JPG")
     image = preprocess_image(image)
     display_image(image)
@@ -102,7 +122,16 @@ def main():
 
     number_images = create_number_images(image, bboxes)
     for number_image in number_images:
-        display_image(number_image.image)
+        bbox_image = number_image.get_bounding_box(number_image.image)
+        mnist_image = number_image.mnistify(bbox_image)
+
+        input_image = preprocess_input(mnist_image)
+        
+        with torch.no_grad():
+            output = model(input_image)
+
+        print(output.argmax(1).item())
+        display_image(mnist_image)
 
 
 if __name__ == "__main__":
