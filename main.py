@@ -10,6 +10,7 @@ CORS(app)
 
 @app.route('/process', methods=['POST'])
 def process_image():
+    print("Process image starting!")
     data = request.get_json()
     image_data = data['image'].split(',')[1]
     img_bytes = base64.b64decode(image_data)
@@ -20,7 +21,4 @@ def process_image():
     img_tensor = torch.tensor(img).float()
     result = img_tensor.mean().item()
 
-    return jsonify({'result': result})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)  # port=10000 works with render.yaml
+    return jsonify({'result': 1})

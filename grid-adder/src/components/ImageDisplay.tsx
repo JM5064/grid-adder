@@ -30,13 +30,6 @@ const ImageDisplay = ({ onSwitchMode, image }: ImageDisplayProps) => {
     processImage()
   }, [image])
 
-  // const getSum = async (canvas: HTMLCanvasElement) => {
-  //   const sum = -1
-  //   console.log("sum received", sum)
-
-  //   return sum
-  // }
-
   const getSum = async (canvas: HTMLCanvasElement): Promise<number | null> => {
     if (!canvas || canvas.width === 0 || canvas.height === 0) {
       console.log("Canvas not ready")
