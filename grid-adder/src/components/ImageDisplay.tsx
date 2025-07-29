@@ -37,7 +37,7 @@ const ImageDisplay = ({ onSwitchMode, image }: ImageDisplayProps) => {
     }
   
     try {
-      const response = await fetch('https://image-backend.onrender.com/process', {
+      const response = await fetch('https://grid-adder.onrender.com/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: canvas.toDataURL('image/jpeg') })
