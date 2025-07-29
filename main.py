@@ -8,6 +8,11 @@ import torch
 app = Flask(__name__)
 CORS(app)
 
+@app.route("/")
+def home():
+    return "Backend is running!"
+
+
 @app.route('/process', methods=['POST'])
 def process_image():
     print("Process image starting!")
