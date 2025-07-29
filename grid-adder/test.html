@@ -1,0 +1,396 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>OpenCV.js + ONNXRuntime-web – Sum Digits Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    #status span { font-weight: bold; }
+    .row { display: flex; gap: 24px; align-items: flex-start; }
+    canvas, img { max-width: 300px; border: 1px solid #ccc; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+
+<h2>OpenCV.js + ONNXRuntime-web – Sum Digits Demo</h2>
+<p id="status">OpenCV: <span style="color:red">NOT LOADED</span> — ORT: <span id="ortStatus" style="color:red">NOT LOADED</span></p>
+
+<div class="row">
+  <div>
+    <div>Original:</div>
+    <img id="imageSrc" src="public/test.png" alt="source" />
+    <div style="margin-top:8px">
+      <button id="runBtn" disabled>Run getSum()</button>
+    </div>
+  </div>
+
+  <div>
+    <div>Processed (debug last MNIST image):</div>
+    <canvas id="canvasOutput" width="280" height="280"></canvas>
+  </div>
+</div>
+
+<h3>Result</h3>
+<div id="result"></div>
+
+<hr />
+<h4>Console</h4>
+<pre id="log"></pre>
+
+<!-- OpenCV.js (put opencv.js + opencv_js.wasm inside /opencv) -->
+<script>
+  // Singleton promise so React-like double runs or multiple calls won't reload it
+  window.__opencvPromise = new Promise((resolve, reject) => {
+    if (window.cv && window.cv.Mat) {
+      resolve(window.cv);
+      return;
+    }
+    // If your build uses Module pattern, define Module BEFORE loading opencv.js
+    window.Module = {
+      locateFile: function(file) {
+        // make sure both opencv.js and opencv_js.wasm are inside /opencv
+        return file;
+      },
+      onRuntimeInitialized: function () {
+        resolve(window.cv);
+      }
+    };
+
+    const script = document.createElement('script');
+    script.src = 'public/opencv.js';
+    script.async = true;
+    script.onerror = (e) => reject(e);
+    document.body.appendChild(script);
+  });
+</script>
+
+<!-- ONNXRuntime-web -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+<script>
+  const statusEl = document.getElementById('status');
+  const ortStatusEl = document.getElementById('ortStatus');
+  const runBtn = document.getElementById('runBtn');
+  const resultEl = document.getElementById('result');
+  const logEl = document.getElementById('log');
+  const canvasOutput = document.getElementById('canvasOutput');
+  const imageEl = document.getElementById('imageSrc');
+
+  let cv = null;
+  let session = null;
+  let inputName = null;
+  let outputName = null;
+
+  function log(msg) {
+    console.log(msg);
+    logEl.textContent += msg + '\n';
+  }
+
+  async function initAll() {
+    try {
+      // 1) Load OpenCV
+      cv = await window.__opencvPromise;
+      statusEl.innerHTML = 'OpenCV: <span style="color:green">LOADED</span> — ORT: <span id="ortStatus" style="color:red">NOT LOADED</span>';
+      log('OpenCV version loaded');
+
+      // 2) Load ORT model
+      session = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['webgl', 'wasm'] // try WebGL, fallback to WASM
+      });
+      ortStatusEl.style.color = 'green';
+      ortStatusEl.textContent = 'LOADED';
+      log('ORT session ready');
+
+      // discover input/output names
+      inputName = session.inputNames[0];
+      outputName = session.outputNames[0];
+      log(`Model IO: input=${inputName}, output=${outputName}`);
+
+      // allow run
+      runBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      log('Initialization error: ' + err.message);
+    }
+  }
+
+  // ------- Utils -------
+
+  function argmax(arr) {
+    let best = 0;
+    for (let i = 1; i < arr.length; i++) {
+      if (arr[i] > arr[best]) best = i;
+    }
+    return best;
+  }
+
+  function toTensorNCHW_1x28x28_u8(mat, mean=0.1307, std=0.3081) {
+    // expects single-channel 28x28 uint8 image
+    const size = mat.rows * mat.cols;
+    const out = new Float32Array(size);
+    const src = mat.data; // Uint8Array
+    for (let i = 0; i < size; i++) {
+      const x = src[i] / 255.0;
+      out[i] = (x - mean) / std;
+    }
+    return new ort.Tensor('float32', out, [1, 1, mat.rows, mat.cols]);
+  }
+
+  function drawMatToCanvas(mat) {
+    // just for debug, show in canvasOutput scaled 10x
+    const tmp = new cv.Mat();
+    cv.resize(mat, tmp, new cv.Size(mat.cols * 10, mat.rows * 10), 0, 0, cv.INTER_NEAREST);
+    cv.imshow(canvasOutput, tmp);
+    tmp.delete();
+  }
+
+  // ------- Pipeline pieces (adjust thresholds/sizes as needed) -------
+
+  function preprocess(imageCanvasOrImg) {
+    // your preprocess_image(image)
+    // Here: read, rotate 90 cw, downscale by 1/2 (like your python)
+    const src = cv.imread(imageCanvasOrImg);
+    const resized = new cv.Mat();
+    const rotated = new cv.Mat();
+    // resize half
+    cv.resize(src, resized, new cv.Size(Math.round(src.cols / 2), Math.round(src.rows / 2)), 0, 0, cv.INTER_AREA);
+    // rotate 90 CW
+    cv.rotate(resized, rotated, cv.ROTATE_90_CLOCKWISE);
+    src.delete();
+    resized.delete();
+    return rotated; // caller must delete
+  }
+
+  function maskBlue(matBGRorRGBA) {
+    // Convert to HSV and inRange (adjust thresholds to your data)
+    const hsv = new cv.Mat();
+    const mask = new cv.Mat();
+    const masked = new cv.Mat();
+
+    // guess the input is RGBA (from HTML element). If it's BGR, change code
+    cv.cvtColor(matBGRorRGBA, hsv, cv.COLOR_RGBA2HSV);
+
+    const lower = new cv.Scalar(90, 30, 20, 0);
+    const upper = new cv.Scalar(130, 200, 200, 255);
+    cv.inRange(hsv, lower, upper, mask);
+    cv.bitwise_and(hsv, hsv, masked, mask);
+
+    hsv.delete();
+    mask.delete();
+    return masked; // HSV masked
+  }
+
+  function blobify(binaryLike) {
+    // Expecting a single-channel binary (0/255). If not, threshold first:
+    const gray = new cv.Mat();
+    const bin = new cv.Mat();
+    const eroded = new cv.Mat();
+    const dilated = new cv.Mat();
+
+    // If it's multi-channel, convert to gray
+    if (binaryLike.channels() > 1) {
+      cv.cvtColor(binaryLike, gray, cv.COLOR_RGBA2GRAY);
+    } else {
+      gray.create(binaryLike.rows, binaryLike.cols, binaryLike.type());
+      gray.data.set(binaryLike.data);
+    }
+
+    // threshold >=1 -> 255
+    cv.threshold(gray, bin, 1, 255, cv.THRESH_BINARY);
+
+    // erode 3x3
+    const k1 = cv.Mat.ones(3, 3, cv.CV_8U);
+    cv.erode(bin, eroded, k1);
+
+    // dilate 11x11 x3
+    const k2 = cv.Mat.ones(11, 11, cv.CV_8U);
+    cv.dilate(eroded, dilated, k2, new cv.Point(-1, -1), 3);
+
+    k1.delete();
+    k2.delete();
+    gray.delete();
+    bin.delete();
+    eroded.delete();
+    return dilated; // caller delete
+  }
+
+  function extractBBoxes(blobified) {
+    const gray = new cv.Mat();
+    const binary = new cv.Mat();
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+
+    // ensure single channel
+    if (blobified.channels() > 1) {
+      cv.cvtColor(blobified, gray, cv.COLOR_RGBA2GRAY);
+    } else {
+      gray.create(blobified.rows, blobified.cols, blobified.type());
+      gray.data.set(blobified.data);
+    }
+
+    cv.threshold(gray, binary, 1, 255, cv.THRESH_BINARY);
+    cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    const boxes = [];
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const r = cv.boundingRect(cnt);
+      if (r.width > 5 && r.height > 5) {
+        boxes.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+      }
+      cnt.delete();
+    }
+
+    // remove bottom-most bbox if you want (as in your python)
+    if (boxes.length > 0) {
+      let bottomIdx = 0;
+      for (let i = 1; i < boxes.length; i++) {
+        if (boxes[i].y > boxes[bottomIdx].y) bottomIdx = i;
+      }
+      boxes.splice(bottomIdx, 1);
+    }
+
+    gray.delete();
+    binary.delete();
+    contours.delete();
+    hierarchy.delete();
+    return boxes;
+  }
+
+  function createNumberImages(image, bboxes) {
+    const list = [];
+    for (const { x, y, width, height } of bboxes) {
+      const rect = new cv.Rect(x, y, width, height);
+      const roi = image.roi(rect);
+      list.push(new NumberImage(roi.clone())); // clone so it survives roi.delete()
+      roi.delete();
+    }
+    return list;
+  }
+
+  class NumberImage {
+    constructor(mat) {
+      this.image = mat; // cv.Mat
+    }
+
+    // get_bounding_box
+    getBoundingBox() {
+      // threshold >=10
+      const mask = new cv.Mat();
+      const nz = new cv.Mat();
+      const out = new cv.Mat();
+      try {
+        cv.threshold(this.image, mask, 9, 255, cv.THRESH_BINARY);
+        cv.findNonZero(mask, nz);
+        if (nz.rows === 0) {
+          // nothing found: return clone
+          return this.image.clone();
+        }
+        const rect = cv.boundingRect(nz);
+        const roi = this.image.roi(rect);
+        const cropped = roi.clone();
+        roi.delete();
+        return cropped;
+      } finally {
+        mask.delete();
+        nz.delete();
+        out.delete();
+      }
+    }
+
+    // mnistify
+    mnistify(img) {
+      const IMAGE_SIZE = 28;
+      const NUMBER_SIZE = 20;
+
+      const w = img.cols, h = img.rows;
+      const scale = NUMBER_SIZE / Math.max(w, h);
+      const newW = Math.ceil(w * scale);
+      const newH = Math.ceil(h * scale);
+
+      const resized = new cv.Mat();
+      const out = new cv.Mat();
+      cv.resize(img, resized, new cv.Size(newW, newH), 0, 0, cv.INTER_AREA);
+
+      const padTop = Math.floor((IMAGE_SIZE - newH) / 2);
+      const padBottom = IMAGE_SIZE - newH - padTop;
+      const padLeft = Math.floor((IMAGE_SIZE - newW) / 2);
+      const padRight = IMAGE_SIZE - newW - padLeft;
+
+      cv.copyMakeBorder(
+        resized, out,
+        padTop, padBottom, padLeft, padRight,
+        cv.BORDER_CONSTANT, new cv.Scalar(0)
+      );
+
+      resized.delete();
+      return out;
+    }
+
+    toOrtTensor(mnistMat) {
+      return toTensorNCHW_1x28x28_u8(mnistMat);
+    }
+
+    dispose() {
+      this.image.delete();
+    }
+  }
+
+  async function getSum(imgEl) {
+    const pre = preprocess(imgEl);
+    const blue = maskBlue(pre);
+
+    const blobs = blobify(blue);
+    const boxes = extractBBoxes(blobs);
+
+    const nums = createNumberImages(pre, boxes);
+
+    let total = 0;
+    for (const ni of nums) {
+      const bbox = ni.getBoundingBox();
+      const mnist = ni.mnistify(bbox);
+
+      // Show (debug)
+      drawMatToCanvas(mnist);
+
+      const tensor = ni.toOrtTensor(mnist);
+      const output = await session.run({ [inputName]: tensor });
+      const logits = output[outputName].data;
+      const pred = argmax(logits);
+
+      total += pred;
+
+      bbox.delete();
+      mnist.delete();
+      ni.dispose();
+    }
+
+    pre.delete();
+    blue.delete();
+    blobs.delete();
+
+    return total;
+  }
+
+  // Run when everything is ready
+  window.addEventListener('load', async () => {
+    await initAll();
+
+    runBtn.addEventListener('click', async () => {
+      if (!session || !cv) return;
+      resultEl.textContent = 'Running...';
+      try {
+        const sum = await getSum(imageEl);
+        resultEl.textContent = `TOTAL: ${sum}`;
+        log(`TOTAL: ${sum}`);
+      } catch (e) {
+        console.error(e);
+        resultEl.textContent = 'Error: ' + e.message;
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
