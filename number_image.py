@@ -45,6 +45,8 @@ class NumberImage:
 
     def mnistify(self, image):
         height, width = image.shape
+        print("Number image width", width)
+        print("Number image height", height)
 
         # Apply letterbox crop with max size 20 x 20
         image_size = 28

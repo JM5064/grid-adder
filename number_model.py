@@ -11,7 +11,6 @@ from model.model import Model
 import torch
 
 
-
 def get_image(file_path):
     image = cv2.imread(file_path)
 
@@ -26,6 +25,8 @@ def preprocess_image(image):
     image = cv2.resize(image, (720, 1280))
     
     image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+
+    print("Image preprocessed", image.shape)
 
     return image
 
@@ -79,6 +80,10 @@ def create_number_images(image, bboxes) -> list[NumberImage]:
     number_images: list[NumberImage] = []
 
     for x, y, width, height in bboxes:
+        if width == 0 or height == 0:
+            print("Invalid number image dimensions", width, height)
+            continue
+
         x_end = x + width
         y_end = y + height
         cropped_image = image[y:y_end, x:x_end]

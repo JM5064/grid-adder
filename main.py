@@ -35,11 +35,14 @@ def process_image():
 
 
 def get_sum(image):
+    print("get sum called")
     # TODO: cache model
     model = Model()
     state = torch.load("model/runs/10epochs/best.pt")
     model.load_state_dict(state["state_dict"])
     model.eval()
+
+    print("Image dimensions:", image.shape)
 
     preprocessed_image = preprocess_image(image)
 
