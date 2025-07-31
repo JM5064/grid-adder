@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import Camera from './components/Camera'
 import ImageDisplay from './components/ImageDisplay'
+import BoundingBoxSelector from './components/BoundingBoxSelector'
 import './App.css'
+import type { BoundingBox } from './types/BoundingBox'
 
 function App() {
   const switchToImage = () => setCurrentMode('image')
@@ -12,17 +14,16 @@ function App() {
 
   return (
     <div>
-      {currentMode === 'camera' ? (
+      {currentMode === 'camera' ? 
         <Camera 
           onSwitchMode={switchToImage}
           setCurrentImage={setCurrentImage}
-          />
-          ) : (
-            <ImageDisplay 
-            onSwitchMode={switchToCamera}
-            image={currentImage}
+        /> : 
+        <ImageDisplay 
+          onSwitchMode={switchToCamera}
+          image={currentImage}
         />
-      )}
+      }
     </div>
   )
 }

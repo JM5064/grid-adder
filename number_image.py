@@ -36,7 +36,7 @@ class NumberImage:
 
     def get_bounding_box(self, image):
         # Find all white (foreground) pixels
-        coords = np.argwhere(image >= 10)
+        coords = np.argwhere(image >= 1)
 
         x, y, width, height = cv2.boundingRect(coords)
 
@@ -45,8 +45,6 @@ class NumberImage:
 
     def mnistify(self, image):
         height, width = image.shape
-        print("Number image width", width)
-        print("Number image height", height)
 
         # Apply letterbox crop with max size 20 x 20
         image_size = 28

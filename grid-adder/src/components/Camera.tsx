@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react'
 import CaptureButton from './CaptureButton'
-// import OutlineOverlay from './OutlineOverlay'
+import OutlineOverlay from './OutlineOverlay'
 
 interface CameraProps {
   onSwitchMode: () => void
@@ -21,8 +21,8 @@ const Camera = ({ onSwitchMode, setCurrentImage }: CameraProps) => {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 2450 },
+            height: { ideal: 1440 }
           }
         })
   
@@ -84,8 +84,8 @@ const Camera = ({ onSwitchMode, setCurrentImage }: CameraProps) => {
 
   return (
     <div className='relative w-full h-full h-screen bg-black'>
-      <video ref={videoRef} autoPlay playsInline muted className='w-full h-full object-cover'/>
-      <canvas ref={canvasRef} className='absolute top-0 left-0 w-full h-full object-cover'/>
+      <video ref={videoRef} autoPlay playsInline muted className='w-full '/>
+      <canvas ref={canvasRef} className='absolute top-0 left-0 w-full'/>
 
       {/* <OutlineOverlay /> */}
       <CaptureButton handleClick={handleClick}/>

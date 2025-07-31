@@ -20,7 +20,7 @@ const CaptureButton = ({ handleClick }: CaptureButtonProps) => {
         hover:bg-white active:scale-95
         transition
         disabled:opacity-50 disabled:cursor-not-allowed
-        absolute left-1/2 -translate-x-1/2 bottom-24
+        absolute left-1/2 -translate-x-1/2 bottom-32
       `}
     >
       {/* Inner “shutter” circle */}

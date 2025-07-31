@@ -24,8 +24,8 @@ def mask_green(image):
 def mask_blue(image):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-    lower = np.array([90, 30, 20])
-    upper = np.array([130, 200, 200])
+    lower = np.array([90, 5, 5])
+    upper = np.array([150, 240, 240])
 
     mask = cv2.inRange(hsv_image, lower, upper)
 
