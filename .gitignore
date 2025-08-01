@@ -1,0 +1,4 @@
+__pycache__
+model/data/MNIST/raw
+model/runs/.DS_Store
+grid-adder/eslint.config.js
